@@ -8,7 +8,7 @@ Exam brief: https://github.com/YakirBar/lh-devops-project-/blob/main/README.md
 
 ---
 
-# PART I — The exam
+# PART I — The exam (required by the brief)
 
 ## What was required
 
@@ -18,7 +18,7 @@ Exam brief: https://github.com/YakirBar/lh-devops-project-/blob/main/README.md
 | 2 | **Docker + Kubernetes** | Own image registry (**Nexus**), replicas **5 / 5 / 3**, **PersistentVolume**, **ConfigMaps**, **Secrets** |
 | 3 | **CI (GitHub Actions)** | Build, test and scan images on every change; push to a registry |
 | 4 | **CD (ArgoCD / GitOps)** | Auto-deploy manifests from git into the cluster |
-| Bonus | **Observability** | Prometheus + Loki + Grafana |
+| **Bonus 1** | **Observability** | Prometheus + Loki + Grafana |
 
 ## What was delivered
 
@@ -28,7 +28,7 @@ Exam brief: https://github.com/YakirBar/lh-devops-project-/blob/main/README.md
 | 2. Docker + Kubernetes | ✅ | minikube + Kustomize, Nexus, **5/5/3**, MySQL replication, PV/Config/Secrets, Ingress |
 | 3. CI | ✅ | GitHub Actions: tests + Trivy/audit scans + push to GHCR |
 | 4. CD | ✅ | ArgoCD GitOps: auto-sync + self-heal + prune |
-| Bonus | ✅ | Prometheus + Grafana + Loki, app `/metrics`, dashboards |
+| **Bonus 1** — Observability | ✅ | Prometheus + Grafana + Loki, app `/metrics`, dashboards |
 
 ### 1. Application (3 tiers)
 
@@ -64,7 +64,7 @@ Exam brief: https://github.com/YakirBar/lh-devops-project-/blob/main/README.md
 - **automated + self-heal + prune**: git is the single source of truth — a push auto-deploys, manual
   cluster edits get reverted, resources removed from git get pruned.
 
-### Bonus — Observability
+### Bonus 1 — Observability (this one WAS part of the brief)
 
 - **kube-prometheus-stack** (Prometheus + Grafana) and **Loki + Promtail**, both deployed by ArgoCD.
 - The backend emits Prometheus metrics (`prometheus-net`), scraped through a **ServiceMonitor**;
@@ -76,7 +76,7 @@ Exam brief: https://github.com/YakirBar/lh-devops-project-/blob/main/README.md
 
 ---
 
-# PART II — Beyond the exam (branch `dev`)
+# PART II — Bonus 2: beyond the brief (branch `dev`)
 
 None of the following was required by the brief. It is the work done after the exam scope was
 complete, on the `dev` branch (deployed by ArgoCD into the `hotel-dev` namespace).
