@@ -1,0 +1,40 @@
+# Frontend Deployment — 5 replicas of the Angular app served by nginx (stateless).
+# nginx also proxies /api → the "backend" Service (same namespace DNS name).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: hotel
+  labels:
+    app: frontend
+spec:
+  replicas: 5                      # exam requirement: 5 frontend replicas.
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-cred
+      containers:
+        - name: frontend
+          image: ghcr.io/igor-vakul/hotel-frontend:latest   # pulled from GHCR (built by CI, Part 3)
+          imagePullPolicy: Always     # mutable tag (:latest / :dev) -> always re-pull new CI builds
+          ports:
+            - containerPort: 80
+          readinessProbe:            # serve traffic only once nginx is up.
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"

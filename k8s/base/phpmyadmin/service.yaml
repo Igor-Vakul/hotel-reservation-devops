@@ -1,0 +1,20 @@
+# Service (ClusterIP) for phpMyAdmin — INTERNAL only (prod-hardening).
+# No node port is exposed; reach it only via `kubectl port-forward` (admin/debug), not from outside.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: phpmyadmin
+  namespace: hotel
+  labels:
+    app: phpmyadmin
+spec:
+  # --- prod-hardening: make phpMyAdmin INTERNAL (was reachable from outside) ---
+  # type: NodePort         # BEFORE: opened a port ON THE NODE -> anyone reaching the node could open phpMyAdmin = risk
+  type: ClusterIP          # AFTER: internal-only address (default type). Reach it only via `kubectl port-forward`.
+  selector:
+    app: phpmyadmin
+  ports:
+    - port: 80
+      targetPort: 80
+      # nodePort: 30880     # REMOVED: nodePort is valid ONLY for type NodePort; a ClusterIP must NOT set it.

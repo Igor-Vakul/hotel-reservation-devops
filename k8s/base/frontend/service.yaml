@@ -1,0 +1,17 @@
+# Frontend Service — stable in-cluster address for the 5 frontend pods.
+# ClusterIP for now; external access comes via the Ingress in P6.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: hotel
+  labels:
+    app: frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80

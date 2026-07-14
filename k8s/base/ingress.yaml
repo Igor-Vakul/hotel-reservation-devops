@@ -1,0 +1,21 @@
+# Ingress — routes external HTTP traffic by hostname to an in-cluster Service.
+# Enforced by the ingress-nginx controller (enabled in P0). Rules only; no work without a controller.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hotel
+  namespace: hotel
+spec:
+  ingressClassName: nginx          # handled by the ingress-nginx controller.
+  rules:
+    - host: hotel.local            # requests for this hostname...
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend     # ...go to the frontend Service (nginx serves SPA + proxies /api → backend).
+                port:
+                  number: 80

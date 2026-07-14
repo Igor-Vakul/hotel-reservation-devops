@@ -1,0 +1,78 @@
+# ArgoCD Application — metrics stack (kube-prometheus-stack via Helm).
+# Unlike the `hotel` Application (git + Kustomize), this source is a REMOTE HELM CHART:
+# ArgoCD's repo-server pulls the chart, runs `helm template` with the inline values
+# below, and the controller applies the rendered manifests into the `monitoring` ns.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts  # Helm chart repo, NOT git
+    chart: kube-prometheus-stack
+    targetRevision: 87.10.1                                      # CHART version, pinned (app v0.92.1)
+    helm:
+      valuesObject:
+        prometheus:
+          prometheusSpec:
+            # Scrape ServiceMonitors/PodMonitors from ALL namespaces, not just those
+            # carrying this chart's release label. Needed so our backend ServiceMonitor
+            # (added in B3) is discovered.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            retention: 6h                                        # trim TSDB footprint on minikube
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+        # Alertmanager routing is out of scope for this bonus — disable to save resources.
+        alertmanager:
+          enabled: false
+        grafana:
+          # admin password stays as the chart default (retrieved from the k8s Secret).
+          # The Loki datasource is provided by the loki-stack chart itself (it registers
+          # Loki as the DEFAULT). So we do NOT add Loki here; we only stop THIS chart from
+          # also marking Prometheus as default — otherwise two charts each claim "default"
+          # and Grafana refuses to start ("Only one datasource ... can be marked as default").
+          sidecar:
+            datasources:
+              # Chart won't provision its own datasources (that Prometheus was marked
+              # default and collided with loki-stack's default Loki). We re-add Prometheus
+              # ourselves below as NON-default, so Loki (from loki-stack) is the only default.
+              defaultDatasourceEnabled: false
+          additionalDataSources:
+            - name: Prometheus
+              type: prometheus
+              uid: prometheus
+              access: proxy
+              url: http://monitoring-kube-prometheus-prometheus.monitoring:9090/
+              isDefault: false
+              jsonData:
+                httpMethod: POST
+                timeInterval: 30s
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+          # Expose Grafana via ingress-nginx at http://grafana.local (prod-shaped access;
+          # TLS/SSO intentionally skipped for the local exam). Reached through the
+          # port-forward on the ingress controller (grafana.local:8088).
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - grafana.local
+            path: /
+            pathType: Prefix
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      selfHeal: true      # revert manual cluster edits back to git
+      prune: true         # delete resources removed from git
+    syncOptions:
+      - CreateNamespace=true    # create the `monitoring` namespace on first sync
+      - ServerSideApply=true    # CRDs are huge -> SSA avoids the client-side annotation limit

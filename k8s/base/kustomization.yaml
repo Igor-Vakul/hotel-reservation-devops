@@ -1,0 +1,26 @@
+# BASE layer of Kustomize: the shared set of application manifests.
+# Kustomize reads this file and merges every manifest listed in resources
+# into a single final YAML stream, which is then applied to the cluster.
+
+apiVersion: kustomize.config.k8s.io/v1beta1   # Kustomize's own API (not a Kubernetes object).
+kind: Kustomization
+
+# Manifests included in base. Grows as phases progress.
+resources:
+  - namespace.yaml
+  - config/configmap.yaml
+  # secrets/secret.yaml is NOT here: the real Secret is gitignored (ArgoCD only sees git).
+  # hotel-secret is applied out-of-band (Part 2); in prod use Sealed Secrets / External Secrets.
+  - nexus/pvc.yaml
+  - nexus/deployment.yaml
+  - nexus/service.yaml
+  - phpmyadmin/deployment.yaml
+  - phpmyadmin/service.yaml
+  - jobs/migrate-job.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+  - backend/servicemonitor.yaml
+  - backend/backend-dashboard-configmap.yaml
+  - frontend/deployment.yaml
+  - frontend/service.yaml
+  - ingress.yaml

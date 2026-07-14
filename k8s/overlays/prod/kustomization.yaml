@@ -1,0 +1,29 @@
+# OVERLAY "prod": the production environment (namespace hotel, 5/5/3), tracked by main.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Reference the base folder (relative path). Kustomize takes all of base.
+resources:
+  - ../../base
+
+# phpMyAdmin is a DEV-only debug tool -> remove it from prod (it lives in base + the dev overlay).
+patches:
+  - target:
+      kind: Deployment
+      name: phpmyadmin
+    patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: phpmyadmin
+  - target:
+      kind: Service
+      name: phpmyadmin
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: phpmyadmin

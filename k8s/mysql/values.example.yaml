@@ -1,0 +1,30 @@
+# TEMPLATE Helm values for the Bitnami MySQL chart (kept in git).
+# Real passwords live in values.yaml (which is .gitignored).
+# On a new machine: copy this to values.yaml and fill in real passwords.
+
+architecture: replication          # 1 primary + N secondaries (real replication)
+
+global:
+  security:
+    allowInsecureImages: true      # allow overriding the image (Bitnami's guard on non-default images)
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/mysql   # archived Bitnami images (after 2025-08-28 bitnami/mysql tags, incl. latest, were removed)
+  # no tag override → chart uses its own frozen version tag from bitnamilegacy
+
+auth:
+  rootPassword: "<mysql root password>"
+  database: hoteldb                # app database name (matches ConnectionStrings__Default)
+  username: hotel                  # app db user (matches ConnectionStrings__Default)
+  password: "<mysql app-user password>"          # MUST match the password in our Secret's connection string
+  replicationPassword: "<mysql replication password>"
+
+primary:
+  persistence:
+    size: 2Gi                      # PVC size for the primary pod
+
+secondary:
+  replicaCount: 2                  # 2 read replicas → total 3 MySQL pods (mysql-0/1/2)
+  persistence:
+    size: 2Gi                      # PVC size for each secondary pod

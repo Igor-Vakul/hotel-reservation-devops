@@ -1,0 +1,15 @@
+# PVC — a "request for a disk" holding Nexus data (repositories, settings, uploaded images).
+# Without it, restarting the Nexus pod would wipe everything. The cluster fulfils the request
+# by creating a PV (real volume) via the StorageClass enabled in P0 (storage-provisioner).
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nexus-data
+  namespace: hotel
+spec:
+  accessModes:
+    - ReadWriteOnce          # mounted read-write by a single node (enough — we have one node).
+  resources:
+    requests:
+      storage: 20Gi          # how much disk we request. Nexus likes space (images are heavy).

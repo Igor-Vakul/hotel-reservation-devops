@@ -1,0 +1,14 @@
+# ConfigMap — non-secret application settings (key-value).
+# The backend receives them as environment variables (via envFrom in the Deployment, P5).
+# Keys with "__" map to nested .NET config sections: Jwt__Issuer → Jwt:Issuer.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hotel-config
+  namespace: hotel
+data:
+  ASPNETCORE_URLS: "http://+:8080"   # address/port the backend listens on.
+  Jwt__Issuer: "hotel-api"           # JWT issuer. The backend both signs and validates with it.
+  Jwt__ExpiryMinutes: "60"           # token lifetime, minutes.
+  Admin__Email: "admin@hotel.local"  # bootstrap admin email (not secret; password lives in the Secret).

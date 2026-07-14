@@ -1,0 +1,19 @@
+# DEV-only Ingress for phpMyAdmin — reach it by hostname (no per-service port-forward).
+# Namespace is set to hotel-dev by the dev overlay's namespace transformer.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: phpmyadmin
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: phpmyadmin-dev.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: phpmyadmin
+                port:
+                  number: 80

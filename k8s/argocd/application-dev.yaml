@@ -1,0 +1,24 @@
+# ArgoCD Application "hotel-dev" — the DEV environment.
+# Tracks the `dev` git branch and deploys the dev overlay into the `hotel-dev` namespace.
+# Prod stays in application.yaml (tracks `main`, overlay local, namespace hotel).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hotel-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Igor-Vakul/k8s-exam.git
+    targetRevision: dev                 # <-- the dev branch (prod app uses main)
+    path: k8s/overlays/dev              # <-- the slim dev overlay
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hotel-dev
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true            # create hotel-dev on first sync
+      - ServerSideApply=true            # ServiceMonitor CRD etc.

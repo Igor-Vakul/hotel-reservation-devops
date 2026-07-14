@@ -1,0 +1,25 @@
+# TEMPLATE Helm values for the DEV MySQL (Bitnami chart). Real passwords -> values-dev.yaml (gitignored).
+# Dev is slim: standalone (1 pod), not replication.
+# fullnameOverride pins the Service name to "mysql-primary" so the app's connection string /
+# phpMyAdmin PMA_HOST (both = mysql-primary) work unchanged in the hotel-dev namespace.
+
+architecture: standalone            # single MySQL pod (dev) — no replicas
+fullnameOverride: mysql-primary     # Service becomes "mysql-primary" (matches app config)
+
+global:
+  security:
+    allowInsecureImages: true
+
+image:
+  registry: docker.io
+  repository: bitnamilegacy/mysql    # same archived image as prod
+
+auth:
+  rootPassword: "<mysql root password>"
+  database: hoteldb
+  username: hotel
+  password: "<mysql app-user password>"   # MUST match the dev Secret's connection string
+
+primary:
+  persistence:
+    size: 2Gi

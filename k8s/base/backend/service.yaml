@@ -1,0 +1,18 @@
+# Backend Service — a stable in-cluster address in front of the 5 backend pods.
+# ClusterIP (internal only): the frontend nginx reaches it by the name "backend".
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: hotel
+  labels:
+    app: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: backend               # route to pods labelled app=backend (load-balanced across the 5).
+  ports:
+    - name: http            # named so the ServiceMonitor can reference this port by name
+      port: 8080
+      targetPort: 8080

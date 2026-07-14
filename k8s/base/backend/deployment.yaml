@@ -1,0 +1,50 @@
+# Backend Deployment — 5 replicas of the .NET API (stateless → safe to scale).
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: hotel
+  labels:
+    app: backend
+spec:
+  replicas: 5                        # exam requirement: 5 backend replicas.
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      imagePullSecrets:
+        - name: ghcr-cred             # creds to pull our private image from GHCR
+      containers:
+        - name: backend
+          image: ghcr.io/igor-vakul/hotel-backend:latest   # pulled from GHCR (built by CI, Part 3)
+          imagePullPolicy: Always     # :latest is mutable — always re-pull so new CI builds land
+          ports:
+            - containerPort: 8080
+          envFrom:                    # same config the migrate Job used.
+            - configMapRef:
+                name: hotel-config
+            - secretRef:
+                name: hotel-secret     # ConnectionStrings__Default → mysql-primary, Jwt__Secret, etc.
+          readinessProbe:             # "ready for traffic?" — failing pods are removed from the Service.
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:              # "still alive?" — a failing pod gets restarted.
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"

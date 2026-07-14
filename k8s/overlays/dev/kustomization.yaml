@@ -1,0 +1,78 @@
+# OVERLAY "dev": a slim development environment, deployed by ArgoCD from the `dev` branch
+# into the `hotel-dev` namespace. Prod stays in `overlays/local` (5/5/3, namespace hotel).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Put EVERY resource from base into the hotel-dev namespace (isolates dev from prod).
+namespace: hotel-dev
+
+resources:
+  - ../../base
+  - phpmyadmin-ingress.yaml   # dev-only: expose phpMyAdmin by hostname (phpmyadmin-dev.local)
+
+# Dev uses the :dev image tag (published by CI on pushes to the `dev` branch),
+# so dev tests new code before it's promoted to main/prod (which use :latest).
+images:
+  - name: ghcr.io/igor-vakul/hotel-backend
+    newTag: dev
+  - name: ghcr.io/igor-vakul/hotel-frontend
+    newTag: dev
+
+# Dev runs slim to save resources on the single minikube node.
+replicas:
+  - name: backend
+    count: 1          # 1 instead of 5
+  - name: frontend
+    count: 1          # 1 instead of 5
+
+patches:
+  # Remove Nexus entirely from dev (legacy/heavy; not needed). Deleting the Service too —
+  # its NodePorts 30081/30082 are cluster-wide and already taken by prod's nexus, which
+  # otherwise leaves dev's nexus Service permanently OutOfSync.
+  - target:
+      kind: Deployment
+      name: nexus
+    patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: nexus
+  - target:
+      kind: Service
+      name: nexus
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: nexus
+  - target:
+      kind: PersistentVolumeClaim
+      name: nexus-data
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: nexus-data
+  # Dev uses its own hostname so its Ingress doesn't clash with prod's hotel.local.
+  - target:
+      kind: Ingress
+      name: hotel
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: hotel-dev.local
+
+  # Drop the Grafana dashboard ConfigMap in dev: prod already ships a dashboard with the
+  # same uid "hotel-backend", and the Grafana sidecar (NAMESPACE=ALL) would import both -> uid clash.
+  - target:
+      kind: ConfigMap
+      name: backend-dashboard
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: backend-dashboard

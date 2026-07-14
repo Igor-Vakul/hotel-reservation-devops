@@ -1,0 +1,74 @@
+# Grafana dashboard as code. The Grafana dashboard sidecar (kube-prometheus-stack)
+# watches ConfigMaps labelled grafana_dashboard="1" in ALL namespaces and auto-imports
+# the JSON. So this lives with the backend (ns hotel) and needs no manual import.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-dashboard
+  namespace: hotel
+  labels:
+    grafana_dashboard: "1"    # picked up by Grafana's dashboard sidecar
+data:
+  hotel-backend.json: |-
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "graphTooltip": 0,
+      "schemaVersion": 39,
+      "tags": ["hotel", "backend"],
+      "templating": { "list": [] },
+      "time": { "from": "now-30m", "to": "now" },
+      "title": "Hotel Backend",
+      "uid": "hotel-backend",
+      "version": 1,
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Request rate (req/s) by endpoint",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (endpoint) (rate(http_requests_received_total{namespace=\"hotel\"}[1m]))",
+              "legendFormat": "{{endpoint}}"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "p95 request latency (s)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace=\"hotel\"}[5m])))",
+              "legendFormat": "p95"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Request rate by status code",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+          "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "sum by (code) (rate(http_requests_received_total{namespace=\"hotel\"}[1m]))",
+              "legendFormat": "{{code}}"
+            }
+          ]
+        }
+      ]
+    }

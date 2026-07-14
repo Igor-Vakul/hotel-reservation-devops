@@ -1,0 +1,12 @@
+# Namespace — a logical partition ("folder") inside the cluster.
+# All Part 2 resources (DB, backend, frontend, Nexus, config) live here,
+# separate from system objects (kube-system) and ingress-nginx.
+
+apiVersion: v1            # Kubernetes API version for this object kind.
+                         # Namespace is a core object → just v1.
+kind: Namespace          # WHAT this object is. Here — a namespace.
+metadata:                # Object metadata (name, labels, annotations).
+  name: hotel            # Namespace name. Used like: kubectl ... -n hotel
+  labels:
+    app.kubernetes.io/part-of: hotel-reservation  # Grouping label: which app this belongs to.
+                                                   # Labels are for grouping/search only; no runtime effect.

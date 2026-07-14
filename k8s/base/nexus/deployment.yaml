@@ -1,0 +1,52 @@
+# Deployment — the "manager" that keeps 1 Nexus pod running.
+# If the pod dies, the Deployment recreates it; the volume (PVC) keeps the data.
+
+apiVersion: apps/v1          # Deployment's API group is apps/v1 (not plain v1).
+kind: Deployment
+metadata:
+  name: nexus
+  namespace: hotel
+  labels:
+    app: nexus
+spec:
+  replicas: 1                # Nexus is a single instance (it's a store, we don't scale it).
+
+  # selector + template.labels MUST match: that's how the Deployment knows which pods
+  # it manages. The app=nexus label links Deployment <-> pods <-> Service.
+  selector:
+    matchLabels:
+      app: nexus
+  template:                  # pod template the Deployment stamps out.
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      securityContext:
+        fsGroup: 200         # the nexus3 image runs as uid/gid 200; make the volume writable for it,
+                             # otherwise Nexus cannot write to /nexus-data.
+      containers:
+        - name: nexus
+          image: sonatype/nexus3:latest   # official Nexus 3 image.
+          ports:
+            - containerPort: 8081          # web UI + REST API.
+            - containerPort: 8082          # docker registry port (enabled in the UI).
+          resources:
+            requests:                      # guaranteed minimum (for the scheduler).
+              memory: "2Gi"
+              cpu: "500m"
+            limits:                        # ceiling we will not exceed (protects the node).
+              memory: "3Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /nexus-data       # Nexus writes all its state here.
+          readinessProbe:                  # "is it ready to serve traffic": Nexus starts slowly,
+            httpGet:                        # so use generous delays to avoid marking it dead.
+              path: /
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 30
+      volumes:
+        - name: data                       # bind the volume to our PVC request.
+          persistentVolumeClaim:
+            claimName: nexus-data

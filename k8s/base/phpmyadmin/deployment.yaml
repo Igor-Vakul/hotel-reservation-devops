@@ -1,0 +1,37 @@
+# phpMyAdmin — a web UI to inspect/manage MySQL. Single pod, connects over the network
+# to ONE MySQL endpoint (the primary Service). It is NOT "per MySQL pod".
+# Optional / local convenience only — do not expose publicly in a real cluster.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: phpmyadmin
+  namespace: hotel
+  labels:
+    app: phpmyadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: phpmyadmin
+  template:
+    metadata:
+      labels:
+        app: phpmyadmin
+    spec:
+      containers:
+        - name: phpmyadmin
+          image: phpmyadmin:latest        # official public image (Docker Hub) — not Bitnami
+          env:
+            - name: PMA_HOST
+              value: mysql-primary         # target the MySQL primary Service (read/write view)
+            - name: PMA_PORT
+              value: "3306"
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"

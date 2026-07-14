@@ -1,0 +1,24 @@
+# ArgoCD Application — tells ArgoCD what to keep in sync.
+# Lives in the `argocd` namespace (where ArgoCD watches for Application CRs).
+# Points at our Kustomize overlay in git; deploys into the `hotel` namespace.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hotel
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Igor-Vakul/k8s-exam.git
+    targetRevision: main                  # track main (Part 4 merged)
+    path: k8s/overlays/prod               # our Kustomize overlay (renamed local -> prod)
+  destination:
+    server: https://kubernetes.default.svc  # this cluster
+    namespace: hotel
+  syncPolicy:
+    automated:
+      selfHeal: true      # revert manual cluster edits back to git
+      prune: true         # delete resources removed from git
+    syncOptions:
+      - CreateNamespace=true

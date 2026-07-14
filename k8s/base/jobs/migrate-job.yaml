@@ -1,0 +1,26 @@
+# Job — runs a ONE-OFF task and finishes (unlike a Deployment, which keeps pods alive).
+# This one applies EF Core migrations + seeds the bootstrap admin exactly once,
+# so the 5 backend replicas (P5) never migrate concurrently.
+
+apiVersion: batch/v1          # Job lives in the batch/v1 API group.
+kind: Job
+metadata:
+  name: migrate
+  namespace: hotel
+spec:
+  backoffLimit: 3             # retry the pod up to 3 times if it fails, then give up.
+  template:
+    spec:
+      restartPolicy: Never    # Jobs use Never or OnFailure (not Always).
+      imagePullSecrets:
+        - name: ghcr-cred      # creds to pull our private image from GHCR
+      containers:
+        - name: migrate
+          # Pulled by the cluster from GHCR (built by CI, Part 3).
+          image: ghcr.io/igor-vakul/hotel-backend:latest
+          args: ["migrate"]    # appended to the image ENTRYPOINT → `dotnet backend.dll migrate`.
+          envFrom:             # inject the same config the app uses.
+            - configMapRef:
+                name: hotel-config
+            - secretRef:
+                name: hotel-secret   # provides ConnectionStrings__Default → mysql-primary

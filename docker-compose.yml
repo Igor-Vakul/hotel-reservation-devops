@@ -1,0 +1,45 @@
+services:
+  mysql:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    ports: ["3306:3306"]
+    volumes: ["mysqldata:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    environment:
+      PMA_HOST: mysql
+    ports: ["8081:80"]
+    depends_on: [mysql]
+
+  backend:
+    build: ./backend
+    environment:
+      ConnectionStrings__Default: ${CONNECTIONSTRINGS__DEFAULT}
+      ASPNETCORE_URLS: http://+:8080
+      Jwt__Secret: ${Jwt__Secret}
+      Jwt__Issuer: ${Jwt__Issuer}
+      Jwt__ExpiryMinutes: ${Jwt__ExpiryMinutes}
+      Admin__Email: ${Admin__Email}
+      Admin__Password: ${Admin__Password}
+    ports: ["5000:8080"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports: ["8090:80"]   # host 8090 (8080 is in Windows' reserved port range)
+    depends_on: [backend]
+
+volumes:
+  mysqldata:

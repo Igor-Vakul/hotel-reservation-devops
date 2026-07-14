@@ -1,0 +1,31 @@
+# Secrets / local env
+.env
+*.env.local
+# real Secret with real values — NOT in git (repo keeps only secret.example.yaml)
+k8s/base/secrets/secret.yaml
+# real Helm values with MySQL passwords — NOT in git (repo keeps only values.example.yaml)
+k8s/mysql/values.yaml
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# .NET
+bin/
+obj/
+*.user
+
+# Angular / Node
+node_modules/
+frontend/dist/
+frontend/.angular/
+
+# IDE / OS
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+
+# SDD scratch
+.superpowers/
+# dev-namespace copy of the real secret — NOT in git
+k8s/base/secrets/secret-dev.yaml

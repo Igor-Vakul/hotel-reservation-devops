@@ -1,0 +1,21 @@
+# ServiceMonitor — tells the Prometheus Operator to scrape the backend's /metrics.
+# The operator (installed by kube-prometheus-stack) watches ServiceMonitor CRs and
+# regenerates Prometheus' scrape config. Prometheus is set to pick up ServiceMonitors
+# in ALL namespaces (serviceMonitorSelectorNilUsesHelmValues=false, phase B0).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend
+  namespace: hotel
+  labels:
+    app: backend
+spec:
+  selector:
+    matchLabels:
+      app: backend        # scrape Services labelled app=backend (our backend Service)
+  endpoints:
+    - port: http          # the named Service port (8080)
+      path: /metrics      # prometheus-net exposes metrics here
+      interval: 30s
+      honorLabels: true   # keep the app's own labels (e.g. endpoint=route) over
+                          # the target labels the ServiceMonitor would add (endpoint=port name)
