@@ -1,0 +1,14 @@
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: smtp
+  namespace: monitoring
+spec:
+  encryptedData:
+    password: AgBwYttX/+hqb5xBXmUAxL+bHyYrchVzL4uQ16RVnnMAXwDR5yFpglPlAKPTcSVSKyATCvLI2DhMZ2jkwEDWyDUIzobLfWDaMiOx4Fzj4WggzxL54V9pbSvRt3TQsqUcp9SK3/rboCSZdnKS+tXGfYfk9IJo6a3QiO08dUjaTs/iOWBbPuqMOruieKVdDNgQbrwSemybFsrTH2ezaVXDNFQS0HXqGg7n0pPV6yT9IG9eoQ3yPiOTPI9g84I4CvX0O+6OJ6B53Z8KrfMXsqjsRCJDvpgRb/gZeg3xCbNyZIiTjLTjiNB+zs/o2oDz2fUfc+UQSbioSo+KfwT/bmBmmYUnqt36zt2F2LEXElGBYNHuXHjESL+vse48Nx+VmkBp7ZmXofSq+O7lKzey+9W1uruLeN/hthcKH/Hgq0JNVNRuAaX7t/QAkf0pzJheMMJFSkRfsTqRiJ6DJFac3WqOZyhzog6WnGqsigJEkLLRizExDvZHs3fxnn7EWDuy6Nu2Q1qJZE5Zp8mj7s3UnFCcTk0HjKR0gmnK4ekjYRQwlGF6PqtuqCpktVBvi4f7oyE/GzjfqZtTaFtjCdyhVWvQi2HhopTI0rwFy4TMmfLv8od9LY9TGFgjnqsDkKOqWtWjiV2zMNCA1r4Eg/wBjJhfqJ1Z4tNMqqZYO/jl9xjzkZXivljRjGWeBYvfQL7bJRCJmHyzrMquHPsO4WtoqXUwrvmx
+  template:
+    metadata:
+      name: smtp
+      namespace: monitoring
+    type: Opaque

@@ -1,0 +1,64 @@
+# Restore Job — DESTRUCTIVE, run by hand only.
+#
+# ⚠️ Deliberately NOT listed in kustomization.yaml. If ArgoCD managed this Job it would run it on
+#    sync — periodically overwriting the LIVE database with an old dump. Restoring is a conscious,
+#    manual act; it has no place in an automatic GitOps loop.
+#
+# ⚠️ metadata has NO namespace on purpose: you must name it explicitly, so a restore cannot land in
+#    the wrong environment by accident.
+#
+# Usage:
+#   kubectl -n hotel-dev apply -f k8s/base/jobs/restore-job.yaml
+#   kubectl -n hotel-dev logs job/mysql-restore -f
+#   kubectl -n hotel-dev delete job mysql-restore     # a Job is immutable — delete before re-running
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mysql-restore
+spec:
+  backoffLimit: 0              # NO retries. A destructive step that failed halfway needs human eyes,
+                               # not a blind second attempt.
+  template:
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: mysql-restore
+          image: docker.io/bitnamilegacy/mysql:9.4.0-debian-12-r1
+
+          env:
+            # ROOT this time (the backup Job uses the app user): the dump contains CREATE DATABASE,
+            # and the app user has no privilege to create databases. Restore is an admin operation.
+            - name: MYSQL_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-primary
+                  key: mysql-root-password
+
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+
+              # Newest dump first (-t sorts by mtime), take one.
+              FILE="$(ls -1t /backup/hoteldb-*.sql.gz | head -1)"
+              echo "[restore] restoring from ${FILE}"
+
+              # zcat -> mysql: the dump is plain SQL (CREATE DATABASE / CREATE TABLE / INSERT),
+              # so restoring is just replaying it through the client.
+              zcat "${FILE}" | mysql --host=mysql-primary --user=root
+
+              echo "[restore] done"
+              mysql --host=mysql-primary --user=root \
+                -e "SELECT COUNT(*) AS hotels FROM hoteldb.Hotels;"
+
+          volumeMounts:
+            - name: dumps
+              mountPath: /backup
+              readOnly: true     # a restore must never be able to damage the backups it reads
+
+      volumes:
+        - name: dumps
+          persistentVolumeClaim:
+            claimName: mysql-backup

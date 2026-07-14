@@ -1,0 +1,109 @@
+# CronJob = an alarm clock. At the scheduled time it does exactly ONE thing:
+# it creates a Job. The Job then creates a Pod and drives it to success.
+#   CronJob (when) -> Job (finish it) -> Pod (do the work)
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: hotel
+spec:                          # SPEC 1 — the ALARM CLOCK
+  schedule: "0 3 * * *"        # every day at 03:00...
+  timeZone: "Asia/Jerusalem"   # ...in THIS zone. Without it cron runs in UTC, and "03:00" silently
+                               # means 05:00/06:00 local (DST-dependent). Say the zone out loud.
+
+  concurrencyPolicy: Forbid    # previous dump still running? skip this run.
+                               # The default (Allow) would start a second mysqldump alongside the
+                               # first: double load on the DB, two pods writing to the same disk.
+
+  startingDeadlineSeconds: 600 # cluster was down at 03:00? still start, if within 10 minutes.
+                               # Also keeps the "100 missed schedules" counter from wedging the CronJob.
+
+  successfulJobsHistoryLimit: 3   # keep the last 3 successful Jobs...
+  failedJobsHistoryLimit: 3       # ...and the last 3 failed ones. Their pods still hold the LOGS —
+                                  # set this to 0 and a failed backup vanishes without explanation.
+
+  jobTemplate:                 # "which Job to create"
+    spec:                      # SPEC 2 — the JOB (drive the work to success)
+      backoffLimit: 2          # if the pod fails, try again up to 2 times, then give up
+      activeDeadlineSeconds: 900  # hard timeout: a dump still running after 15 min is a hung dump
+                                  # holding a DB connection open. Kill it.
+
+      template:                # "which Pod to create" — same PodTemplate as in a Deployment
+        spec:                  # SPEC 3 — the POD
+          restartPolicy: Never # a failed pod is KEPT (its logs survive); the Job makes a new one
+
+          containers:
+            - name: mysqldump
+              # Same image the MySQL server itself runs (asked the cluster, did not guess):
+              #   kubectl get pod mysql-primary-0 -o jsonpath="{.spec.containers[*].image}"
+              # It ships the client tools (mysql, mysqldump) and matches the server version.
+              image: docker.io/bitnamilegacy/mysql:9.4.0-debian-12-r1
+
+              env:
+                # Point at the Secret the MySQL Helm chart already owns — do NOT copy the password
+                # into our own Secret. One source of truth: rotate it there and this Job follows.
+                # secretKeyRef takes ONE key (envFrom would pull in the root password too).
+                - name: MYSQL_PWD              # the mysql client reads the password from this env var,
+                  valueFrom:                   # so it never shows up in `ps aux` (unlike -p<password>).
+                    secretKeyRef:
+                      name: mysql-primary      # the Secret created by the Helm release
+                      key: mysql-password      # the APP user's password — least privilege, not root's
+
+              command: ["/bin/bash", "-c"]     # override the image's ENTRYPOINT: we want a script,
+              args:                            # not the MySQL server the image normally starts.
+                - |
+                  set -euo pipefail
+                  # -e  stop on the first error
+                  # -u  fail on an undefined variable (a typo must not silently expand to "")
+                  # -o pipefail  THE important one: without it, `mysqldump | gzip` returns GZIP's exit
+                  #    code — mysqldump can die and gzip still happily compresses nothing, leaving a
+                  #    green Job and an empty backup. This is how dead backups are born.
+
+                  FILE="/backup/hoteldb-$(date -u +%Y-%m-%d_%H%M).sql.gz"
+                  TMP="${FILE}.tmp"
+
+                  # ATOMIC WRITE. Dump into a temp name and only rename on success.
+                  # Why: a failed dump still creates the output file (the shell opens it before
+                  # mysqldump even runs), leaving a 20-byte empty .gz that LOOKS like a backup.
+                  # The restore Job picks the NEWEST file — so a failed backup could hand you an
+                  # empty dump during a real incident. A failed backup is worse than none.
+                  # `mv` within one filesystem is atomic: the final name either holds a complete
+                  # dump or does not exist at all.
+                  trap 'rm -f "${TMP}"' EXIT     # never leave temp garbage behind, whatever happens
+
+                  # --single-transaction: consistent snapshot inside ONE transaction, WITHOUT locking
+                  #   the tables (InnoDB) — the app keeps working while the dump runs.
+                  # --no-tablespaces: mysqldump 8+ dumps tablespace metadata, which needs the global
+                  #   PROCESS privilege. Our user only owns hoteldb (least privilege, on purpose), so
+                  #   it would log "Access denied ... PROCESS privilege". We have no custom
+                  #   tablespaces — just don't ask for them.
+                  mysqldump --host=mysql-primary --user=hotel \
+                    --single-transaction --no-tablespaces --databases hoteldb \
+                    | gzip -c > "${TMP}"
+
+                  # Guard against a "successful" empty dump (a gzip header alone is ~20 bytes).
+                  SIZE="$(stat -c %s "${TMP}")"
+                  if [ "${SIZE}" -lt 1000 ]; then
+                    echo "[backup] FAILED: dump is only ${SIZE} bytes — refusing to publish it"
+                    exit 1
+                  fi
+
+                  mv "${TMP}" "${FILE}"          # publish: from here on the dump is a real backup
+                  echo "[backup] wrote $FILE ($(du -h "$FILE" | cut -f1))"
+
+                  # Retention. Without this the PVC fills up and backups start failing months from
+                  # now, for a reason nobody will connect to the missing rotation.
+                  echo "[backup] pruning dumps older than 7 days"
+                  find /backup -name 'hoteldb-*.sql.gz' -mtime +7 -print -delete
+
+                  ls -lh /backup
+
+              volumeMounts:                    # CONTAINER side: where the disk shows up inside it
+                - name: dumps                  # must match the volume name below
+                  mountPath: /backup
+
+          volumes:                             # POD side: which disk to attach
+            - name: dumps
+              persistentVolumeClaim:
+                claimName: mysql-backup        # the PVC from jobs/backup-pvc.yaml

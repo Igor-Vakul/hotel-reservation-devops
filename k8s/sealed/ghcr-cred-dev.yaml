@@ -1,0 +1,14 @@
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: ghcr-cred
+  namespace: hotel-dev
+spec:
+  encryptedData:
+    .dockerconfigjson: AgB+dnazR9nxt3H7xPqxkf6wYnkROwc9NNzQgwjzKUStTq55mJarXEkg7teMgSzhWvm92DzB5voEr6bxEx5lFWUD8JcADqLwAAAcKaKRG/U7gFZOqNwaW2tSjrK8VwdphNolEvfI0aJ07xCv6R5+FPfdUJQlKufXiCuSgwF5XHjkYSnEE6CxcaqCMrw6A75N8zxGodvSIL9pU1C6efBkpcMZzcHN6B3gC5noyDN3u9ieJ4uAWPp2/ttZ+i39GyDS6tOjQZtMBTG9lohiBWDcf3h4JfnLg3fvlHZpLncjf4DDDPVqHL+hi36o2xJrf5CHT5ip8FBz5AF8SL06LnzDhO7o/Si+bzgBdvxEh8qRkfcA7Cogt2umjofBwbhalvWWKINL0iSg0NS+nRqB+jC9UtgnhmHMbwhZCPoaxxogKSBSm5WucOx6lf2qHsWjOQ3Itk3E+q4cRJYuj3EFk4vzGeBTv3nMdS2Ob9xZdASkj0VhuhMqjMYXSKJpj8WIkZBeKBDG8CZsVsJY7At90wRLQbg/o4dLN5RJjRgjsR7Uroa1UTosoyOTmbi+6TiQHAuOsbsUX/Jxbip84dKgdkUlr494unWsH8jOHg9bh1nlePBVQ1tt5Io1wiJ+LwJUiizW4VD3jjeiqsXa19Zt5iZrt1V9U6r4fY7YKl933RwGIL3xvaNdO7DBG4kuFKtPkeUZyFGd1cK9RK0yE8uSi6kJBWxvoMkw27Jrg8eBAkyI3LCq6t+30fyRQE3Dn0QIQdNlYTBrwZfbAmLTj25kz5oZL1j10SYCawf0NoCgaI3wybAPNQi+Kd7ybfzsLg5aiFWZKghG8rskueAEZlGiVuqcTS8djjS0NEOS8p64624UAtcWxrjJ+zBB0cghRL1F1tusOss55fUVujToWvwOy/PkhYvDbV7JycQ9esLIpTRVwQA6VHD0HQ==
+  template:
+    metadata:
+      name: ghcr-cred
+      namespace: hotel-dev
+    type: kubernetes.io/dockerconfigjson

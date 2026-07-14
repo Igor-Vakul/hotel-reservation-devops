@@ -1,0 +1,21 @@
+# Sealed secrets — encrypted Secrets that are SAFE to keep in git.
+#
+# Deliberately NOT part of base/ or the overlays: those are rendered into hotel/hotel-dev, while
+# these objects carry their own namespace (monitoring) and are shared by both environments.
+# A separate ArgoCD Application (k8s/argocd/cluster-secrets.yaml) syncs this directory.
+#
+# NO `namespace:` transformer here: a SealedSecret is sealed FOR a specific name+namespace (strict
+# scope — the namespace is baked into the ciphertext). Rewriting the namespace would produce an
+# object the controller refuses to decrypt.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # namespace monitoring
+  - telegram-bot.yaml       # Alertmanager -> Telegram bot token
+  - smtp.yaml               # Alertmanager -> Gmail app password
+  # namespace hotel-dev — a SealedSecret is sealed FOR one namespace, so prod (hotel) will need its
+  # own sealed copies. Not done yet: main is frozen until the demo.
+  - hotel-secret-dev.yaml   # DB connection string, JWT secret, bootstrap admin password
+  - ghcr-cred-dev.yaml      # pull credentials for the private GHCR images

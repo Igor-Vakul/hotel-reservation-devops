@@ -22,14 +22,81 @@ spec:
             # (added in B3) is discovered.
             serviceMonitorSelectorNilUsesHelmValues: false
             podMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
             retention: 6h                                        # trim TSDB footprint on minikube
             resources:
               requests:
                 cpu: 100m
                 memory: 256Mi
-        # Alertmanager routing is out of scope for this bonus — disable to save resources.
+        # Alertmanager: receives firing alerts from Prometheus and DELIVERS them. Prometheus itself
+        # can only fire an alert — it cannot notify anyone.
         alertmanager:
-          enabled: false
+          enabled: true
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+            secrets:
+              # Both Secrets are created OUT OF BAND (kubectl create secret ...) and are NOT in git:
+              # a bot token and an SMTP password are live credentials. The operator mounts them at
+              #   /etc/alertmanager/secrets/<secret-name>/<key>
+              # and the config below points at the FILES, never at the values.
+              - telegram-bot     # -> /etc/alertmanager/secrets/telegram-bot/token
+              - smtp             # -> /etc/alertmanager/secrets/smtp/password
+
+          config:
+            route:
+              receiver: oncall
+              group_by: ['namespace', 'alertname']
+              group_wait: 30s      # a new alert waits 30s — more of the same outage may be arriving
+              group_interval: 5m   # new alerts joining an existing group are delivered every 5m
+              repeat_interval: 4h  # still firing after 4h? remind me, or it gets forgotten
+              routes:
+                # The chart ships dozens of its own rules; on minikube several kube-system ones fire
+                # permanently (a single-node control plane doesn't expose what they expect). Route
+                # them nowhere — their noise would bury the alerts that matter. Alert fatigue is a
+                # real failure mode: people start ignoring ALL alerts, including the true ones.
+                - matchers: ['namespace = kube-system']
+                  receiver: 'null'
+
+            receivers:
+              - name: 'null'       # a receiver with no config = the notification is dropped
+
+              # ONE receiver can hold SEVERAL integrations: the alert is delivered to all of them.
+              # No need for two routes just to reach two channels.
+              - name: oncall
+                telegram_configs:
+                  - bot_token_file: /etc/alertmanager/secrets/telegram-bot/token  # never the token itself
+                    chat_id: 616516504      # <-- numeric chat id (not a secret, but it IS in git)
+                    parse_mode: HTML
+                    send_resolved: true        # also notify when the alert clears
+                    message: |-
+                      {{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} <b>{{ .CommonLabels.alertname }}</b>
+                      {{ range .Alerts }}{{ .Annotations.summary }}
+                      {{ .Annotations.description }}
+                      {{ end }}
+
+                email_configs:
+                  - to: igor.vak1310@gmail.com
+                    # Gmail refuses to send "on behalf of" anyone else: `from` must be the account
+                    # we authenticate as.
+                    from: igor.vak1310@gmail.com
+                    smarthost: smtp.gmail.com:587      # 587 = STARTTLS (plain 25 is not accepted)
+                    auth_username: igor.vak1310@gmail.com
+                    auth_identity: igor.vak1310@gmail.com
+                    # A Google APP PASSWORD, not the account password (Gmail rejects the latter).
+                    # It can be revoked on its own, without touching the account.
+                    auth_password_file: /etc/alertmanager/secrets/smtp/password
+                    send_resolved: true
+                    headers:
+                      subject: '{{ if eq .Status "firing" }}[FIRING]{{ else }}[RESOLVED]{{ end }} {{ .CommonLabels.alertname }}'
+                    html: |-
+                      <h3>{{ .CommonLabels.alertname }} ({{ .Status }})</h3>
+                      {{ range .Alerts }}
+                        <p><b>{{ .Annotations.summary }}</b><br>{{ .Annotations.description }}</p>
+                        <p><small>{{ range .Labels.SortedPairs }}{{ .Name }}={{ .Value }} {{ end }}</small></p>
+                      {{ end }}
         grafana:
           # admin password stays as the chart default (retrieved from the k8s Secret).
           # The Loki datasource is provided by the loki-stack chart itself (it registers

@@ -1,0 +1,42 @@
+# PrometheusRule — alerting rules for the MySQL backup CronJob.
+#
+# Lives in the OVERLAY, not in base: base is rendered into BOTH namespaces, but Prometheus is a
+# single cluster-wide instance. A rule placed in base would be loaded twice and evaluated twice.
+# A Deployment must be duplicated per environment; a monitoring rule must not.
+#
+# Discovered only because monitoring.yaml sets ruleSelectorNilUsesHelmValues: false — otherwise
+# Prometheus picks up rules carrying the chart's own release label only.
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: backup-alerts
+spec:
+  groups:
+    - name: mysql-backup
+      rules:
+        # --- Cause-based: something ran, and it failed. ------------------------------------------
+        - alert: MysqlBackupJobFailed
+          # kube-state-metrics turns K8s object state into metrics. job_name=~"mysql-backup.*"
+          # matches both scheduled runs (mysql-backup-29733120) and manual ones
+          # (kubectl create job --from=cronjob/mysql-backup ...).
+          expr: kube_job_status_failed{namespace="hotel-dev", job_name=~"mysql-backup.*"} > 0
+          for: 5m                 # it has already failed; `for` only guards against flapping.
+          labels:
+            severity: critical
+          annotations:
+            summary: "MySQL backup job failed (hotel-dev)"
+            description: "Job {{ $labels.job_name }} failed. Check: kubectl -n hotel-dev logs job/{{ $labels.job_name }}"
+
+        # --- Symptom-based: no fresh backup exists, whatever the reason. -------------------------
+        # THIS is the one that matters. A backup's most dangerous failure is SILENCE, not an error:
+        # a suspended CronJob, a deleted CronJob, or a cluster that was down produces no failed Job
+        # at all — the rule above stays quiet while backups quietly stop existing.
+        - alert: MysqlBackupTooOld
+          expr: time() - max(kube_job_status_completion_time{namespace="hotel-dev", job_name=~"mysql-backup.*"}) > 90000
+          for: 15m                # 90000s = 25h: one daily run plus an hour of slack.
+          labels:
+            severity: critical
+          annotations:
+            summary: "No successful MySQL backup in over 25 hours (hotel-dev)"
+            description: "Last successful backup completed >25h ago. The CronJob may be suspended, deleted, or failing before it even starts."

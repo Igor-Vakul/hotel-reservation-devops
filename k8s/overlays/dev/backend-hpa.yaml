@@ -1,0 +1,46 @@
+# HorizontalPodAutoscaler — the controller that owns `backend`'s replica count.
+#
+# Every ~15s it reads CPU usage from metrics-server (NOT Prometheus — metrics-server only knows
+# "right now" and keeps no history) and computes:
+#
+#     wanted = current x (currentUsage / targetUsage)
+#
+# "Usage" is a percentage of resources.requests.cpu — NOT of a core, NOT of the limit.
+# backend requests 100m, so eating 50m = 50%. Without requests the HPA is blind (<unknown>).
+#
+# NOTE: the Deployment's spec.replicas is deliberately ignored by ArgoCD (application-dev.yaml:
+# ignoreDifferences + RespectIgnoreDifferences). One field, one owner — here the owner is the HPA.
+# Otherwise selfHeal would keep resetting replicas to the value in git while the HPA scales up.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+spec:
+  scaleTargetRef:            # WHAT we scale
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+
+  minReplicas: 1             # dev runs slim; prod's exam requirement is 5
+  maxReplicas: 5             # ceiling — a runaway autoscaler must not eat the whole node
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Why 50 and not 90: scaling is not instant (schedule pod -> pull image -> readiness
+          # probe = seconds). By the time new pods are ready at 90%, the old ones are already
+          # drowning. 50% buys the headroom to react.
+          averageUtilization: 50
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0     # react to a load spike immediately
+    scaleDown:
+      # Do NOT shrink the moment load dips: a short lull would kill pods that are about to be
+      # needed again, and the HPA would flap. Look back over 5 minutes and scale down only to the
+      # highest recommendation seen in that window.
+      stabilizationWindowSeconds: 300

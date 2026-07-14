@@ -1,0 +1,20 @@
+# PVC — a "request for a disk". A pod's own filesystem dies with the pod, so the dumps need
+# storage that outlives it. The backup CronJob writes here; a restore Job reads from here.
+#
+# NOTE: this disk lives INSIDE the cluster, so it is only half a backup — it survives a pod or a
+# node restart, but not the loss of the cluster. A real one is shipped off-site (S3/MinIO).
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-backup
+  namespace: hotel
+spec:
+  accessModes:
+    - ReadWriteOnce   # one writer at a time is enough: the CronJob runs one pod at a time.
+                      # ReadWriteMany would need a networked filesystem (NFS/EFS) — minikube's
+                      # hostPath StorageClass cannot provide it, so the PVC would stay Pending.
+  resources:
+    requests:
+      storage: 1Gi    # ~7 daily dumps of a tiny DB, gzipped, with plenty of headroom.
+                      # A PVC can be grown later (if the StorageClass allows) but NEVER shrunk.

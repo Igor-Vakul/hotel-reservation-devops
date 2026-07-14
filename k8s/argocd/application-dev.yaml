@@ -22,3 +22,17 @@ spec:
     syncOptions:
       - CreateNamespace=true            # create hotel-dev on first sync
       - ServerSideApply=true            # ServiceMonitor CRD etc.
+      # ignoreDifferences below only affects the DIFF. Without this option a sync triggered by any
+      # other change would still push the rendered `replicas: 1` and collapse whatever the HPA set.
+      - RespectIgnoreDifferences=true
+
+  # spec.replicas of `backend` is owned by the HPA, not by git. Without this, the two fight:
+  # HPA scales 1 -> 4 under load, ArgoCD's selfHeal sees "drift from git" and scales back to 1
+  # (killing pods mid-request), the HPA scales up again... forever.
+  # Rule: a field managed by a controller must not also be declared in git — one owner per field.
+  ignoreDifferences:
+    - group: apps                       # Deployment lives in the "apps" API group
+      kind: Deployment
+      name: backend                     # only this one (frontend has no HPA yet)
+      jsonPointers:
+        - /spec/replicas                # hands this field over to the HPA

@@ -9,6 +9,8 @@ namespace: hotel-dev
 resources:
   - ../../base
   - phpmyadmin-ingress.yaml   # dev-only: expose phpMyAdmin by hostname (phpmyadmin-dev.local)
+  - backup-alerts.yaml
+  - backend-hpa.yaml
 
 # Dev uses the :dev image tag (published by CI on pushes to the `dev` branch),
 # so dev tests new code before it's promoted to main/prod (which use :latest).
@@ -64,6 +66,36 @@ patches:
       - op: replace
         path: /spec/rules/0/host
         value: hotel-dev.local
+
+  # The MySQL Helm releases were named differently per env (prod: "mysql", dev: "mysql-dev"), and
+  # Bitnami names its objects after the release -> the auth Secret is called "mysql" in hotel but
+  # "mysql-primary" in hotel-dev. Base targets the prod name; retarget it here.
+  # (The clean long-term fix is fullnameOverride so both envs differ only by namespace — but that
+  # means `helm upgrade` on prod, which is frozen until the demo.)
+  # Strategic-merge patch (not JSON6902): lists inside a PodSpec merge by `name`, so this targets
+  # the MYSQL_PWD env var by NAME rather than by its index — adding another env var later cannot
+  # silently shift what gets patched.
+  - target:                 # select by kind+name; without this, kustomize matches on namespace too
+      kind: CronJob         # and the patch (no namespace) would not match base (namespace: hotel).
+      name: mysql-backup
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: mysql-backup
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: mysqldump
+                    env:
+                      - name: MYSQL_PWD
+                        valueFrom:
+                          secretKeyRef:
+                            name: mysql-primary
+                            key: mysql-password
 
   # Drop the Grafana dashboard ConfigMap in dev: prod already ships a dashboard with the
   # same uid "hotel-backend", and the Grafana sidecar (NAMESPACE=ALL) would import both -> uid clash.

@@ -17,6 +17,8 @@ resources:
   - phpmyadmin/deployment.yaml
   - phpmyadmin/service.yaml
   - jobs/migrate-job.yaml
+  - jobs/backup-pvc.yaml
+  - jobs/backup-cronjob.yaml
   - backend/deployment.yaml
   - backend/service.yaml
   - backend/servicemonitor.yaml
