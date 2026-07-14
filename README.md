@@ -4,7 +4,9 @@ A 3-tier hotel-reservation application taken all the way from source code to a G
 observable Kubernetes deployment. Each part is layered on top of the previous one without breaking
 the application's contract.
 
-Exam brief: https://github.com/YakirBar/lh-devops-project-/blob/main/README.md
+**Exam brief** by [Yakir Bar](https://github.com/YakirBar) —
+[lh-devops-project](https://github.com/YakirBar/lh-devops-project-/blob/main/README.md).
+The requirements below are his; the implementation is mine.
 
 ---
 
