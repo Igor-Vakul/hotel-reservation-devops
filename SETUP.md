@@ -1,4 +1,4 @@
-# Setup — from an empty machine to a running cluster
+| ArgoCD | https://localhost:18080 | three Applications, all green (Synced / Healthy) |# Setup — from an empty machine to a running cluster
 
 Every step has the same shape:
 
@@ -80,7 +80,7 @@ Stop it with `Ctrl+C` before moving on — Kubernetes will want the same ports.
 
 **Run:**
 ```powershell
-minikube start --driver=docker --insecure-registry="192.168.49.0/24" --cpus=4 --memory=8192
+minikube start --driver=docker --insecure-registry="192.168.49.0/24" --cpus=4 --memory=16384
 ```
 
 **Check:**
@@ -95,64 +95,59 @@ minikube   Ready    control-plane   1m    v1.35.1
 **If it fails:**
 - *"Cannot connect to the Docker daemon"* — Docker Desktop is not running. Start it, wait for
   "Engine running", retry.
-- *the cluster hangs or dies on start* — give it less memory (`--memory=6144`), or reset it
+- *the cluster hangs or dies on start* — your host does not have that much RAM to spare. Lower it
+  (`--memory=12288` is the practical floor with monitoring running), or reset the cluster
   completely: `minikube delete` then `minikube start ...` again.
 - *`kubectl` says `x509: certificate signed by unknown authority` or `connection refused`* — in 99 %
   of cases **the cluster is simply not running**. Check with `minikube status` before looking for
   anything more exotic.
 
+> **Sizing:** 16 GB is what this stack actually needs — the app (5+5+3 pods) plus ArgoCD, Prometheus,
+> Grafana and Loki all live on this single node. 8 GB is enough for the application alone, but pods
+> start landing in `Pending` once the monitoring stack is added.
+>
 > `--insecure-registry` can only be set **when the cluster is created**. It allows pulling images
 > over plain HTTP from the Nexus registry that runs inside the cluster.
 
 ---
 
-## Step 3 — Turn on the two addons
+## Step 3 — Turn on the ingress addon
 
 **What:** `ingress` installs the reverse proxy that exposes the app by hostname.
-`metrics-server` collects CPU/RAM usage — the autoscaler (branch `dev`) is blind without it.
 
 **Run:**
 ```powershell
 minikube addons enable ingress
-minikube addons enable metrics-server
 ```
 
 **Check:**
 ```powershell
 kubectl get pods -n ingress-nginx
-kubectl top nodes
 ```
 ```
 NAME                                       READY   STATUS      RESTARTS   AGE
 ingress-nginx-admission-create-xxxxx       0/1     Completed   0          2m     <- Completed is normal
 ingress-nginx-controller-xxxxxxxxxx-xxxxx  1/1     Running     0          2m     <- this must be 1/1
-
-NAME       CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)
-minikube   411m         4%       8281Mi          34%
 ```
 
 **If it fails:**
-- *`kubectl top` says "Metrics API not available"* — metrics-server needs ~1 minute to collect its
-  first samples. Wait and retry.
-- *it still says that after a few minutes* — look at the pod:
-  `kubectl get pods -n kube-system | Select-String metrics-server`. A `0/1` pod means its readiness
-  probe fails; under heavy load the kubelet cannot answer in time and the pod reports itself as not
-  ready. It recovers on its own once the node is idle.
+- *the controller pod stays `ContainerCreating` for minutes* — it is pulling its image; that is normal
+  on a cold cluster.
+- *`admission-create` shows `Completed`* — that is not an error: it is a one-off Job that generated
+  the webhook certificate and exited.
 
 ---
 
-## Step 4 — Create the namespaces
+## Step 4 — Create the namespace
 
-**What:** a namespace is a folder inside the cluster. `hotel` = production, `hotel-dev` = the dev
-environment (optional).
+**What:** a namespace is a folder inside the cluster. Everything in this guide goes into `hotel`.
 
 **Run:**
 ```powershell
 kubectl create namespace hotel
-kubectl create namespace hotel-dev
 ```
 
-**Check:** `kubectl get ns` lists both.
+**Check:** `kubectl get ns` lists `hotel`.
 
 **If it fails:** *"already exists"* is not an error — the namespace is there, move on.
 
@@ -187,16 +182,12 @@ ghcr-cred      kubernetes.io/dockerconfigjson   1      10s
 hotel-secret   Opaque                           3      30s
 ```
 
-Repeat both with `-n hotel-dev` if you want the dev environment.
-
 **If it fails:**
 - *pods later show `ImagePullBackOff`* — `ghcr-cred` is wrong or missing **in that namespace**.
-  Secrets are namespaced: one in `hotel` does nothing for `hotel-dev`. Delete and recreate it.
+  Secrets are namespaced: one created in another namespace does nothing here. Delete and recreate it
+  with `-n hotel`.
 - *pods later show `CreateContainerConfigError`* — the pod refers to a secret key that does not
   exist. Compare your `secret.yaml` with `secret.example.yaml`, key by key.
-
-> On branch `dev` this whole step disappears: the secrets live in git as **SealedSecret** objects
-> (encrypted) and are recreated automatically — see Step 10.
 
 ---
 
@@ -211,12 +202,6 @@ Copy-Item k8s/mysql/values.example.yaml k8s/mysql/values.yaml
 #    fill in the real passwords — the app user's password must match the one in secret.yaml
 
 helm install mysql oci://registry-1.docker.io/bitnamicharts/mysql -n hotel -f k8s/mysql/values.yaml
-```
-
-For the dev namespace a single node is enough:
-```powershell
-helm install mysql-dev oci://registry-1.docker.io/bitnamicharts/mysql -n hotel-dev `
-  -f k8s/mysql/values.yaml --set architecture=standalone --set fullnameOverride=mysql-primary
 ```
 
 **Check:** (MySQL takes 1–2 minutes to come up)
@@ -275,14 +260,15 @@ kubectl port-forward svc/argocd-server -n argocd 18080:443      # then open http
 ## Step 8 — Tell ArgoCD what to deploy
 
 **What:** an `Application` object says: "watch this git folder, and make this namespace match it".
-Applying these four objects is the **last manual step** — everything after it is deployed from git.
+Applying these three objects is the **last manual step** — everything after it is deployed from git.
+(`k8s/argocd/application-dev.yaml` also exists; it deploys the second environment from the `dev`
+branch and is described in that branch's SETUP.md.)
 
 **Run:**
 ```powershell
-kubectl apply -f k8s/argocd/application.yaml       # branch main -> namespace hotel
-kubectl apply -f k8s/argocd/application-dev.yaml   # branch dev  -> namespace hotel-dev
-kubectl apply -f k8s/argocd/monitoring.yaml        # Prometheus + Grafana  (Bonus 1 of the brief)
-kubectl apply -f k8s/argocd/loki.yaml              # Loki + Promtail (logs)
+kubectl apply -f k8s/argocd/application.yaml   # branch main -> namespace hotel (the app itself)
+kubectl apply -f k8s/argocd/monitoring.yaml    # Prometheus + Grafana   (Bonus 1 of the brief)
+kubectl apply -f k8s/argocd/loki.yaml         # Loki + Promtail (logs) (Bonus 1 of the brief)
 ```
 
 **Check:** (give ArgoCD a couple of minutes — it pulls the charts and applies everything)
@@ -293,7 +279,6 @@ kubectl get pods -n hotel
 ```
 NAME         SYNC STATUS   HEALTH STATUS
 hotel        Synced        Healthy
-hotel-dev    Synced        Healthy
 loki         Synced        Healthy
 monitoring   Synced        Healthy
 
@@ -353,7 +338,7 @@ kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8088:80
 |---|---|---|
 | Application | http://hotel.local:8088 | the hotel booking UI — register, log in, book a room |
 | Grafana | http://grafana.local:8088 | dashboards with backend request rate/latency and cluster metrics |
-| ArgoCD | https://localhost:18080 | four Applications, all green (Synced / Healthy) |
+| ArgoCD | https://localhost:18080 | three Applications, all green (Synced / Healthy) |
 | phpMyAdmin | `minikube service phpmyadmin -n hotel` | the `hoteldb` database with the seeded tables |
 
 Grafana's admin password:
