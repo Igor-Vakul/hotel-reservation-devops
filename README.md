@@ -74,7 +74,10 @@ The requirements below are his; the implementation is mine.
 
 > **Registry note:** the brief specified Nexus, and Part 2 runs Nexus in-cluster. Parts 3–4 use
 > **GHCR** because GitHub-hosted CI runners cannot reach a Nexus living inside a local minikube —
-> the realistic cloud-side choice.
+> the realistic cloud-side choice. A registry only earns its keep if it sits where *both* the builder
+> and the cluster can see it.
+> That left Nexus running but unused, which the `dev` branch fixes by pointing it the other way round
+> — see **C4.5 / C4.6** below.
 
 ---
 
@@ -91,16 +94,18 @@ complete, on the `dev` branch (deployed by ArgoCD into the `hotel-dev` namespace
 | **C2** | **Alerting** | Alertmanager (Telegram + email) driven by a `PrometheusRule` with two rules: *the backup Job failed* (cause) and *no successful backup in 25 h* (symptom). The second one matters most: a suspended or deleted CronJob produces no failed Job at all, so a cause-based rule would stay silent while backups quietly stop existing. Noisy default `kube-system` alerts are routed to a null receiver — alert fatigue is a failure mode in itself. |
 | **C3** | **Autoscaling** | `HorizontalPodAutoscaler` on the backend (CPU at 50 % of requests, 1 → 5), with an asymmetric `behavior`: scale up immediately, scale down only after a 5-minute stabilization window. ArgoCD is told to `ignoreDifferences` on `/spec/replicas` (+ `RespectIgnoreDifferences`) — otherwise self-heal and the HPA fight over the same field, killing pods mid-request. |
 | **C4** | **Secrets in git** | **Sealed Secrets**: a Secret is encrypted with the controller's public key and committed as a `SealedSecret` (`k8s/sealed/`). Only this cluster holds the private key, so the ciphertext is safe even in a public repository. `hotel-secret`, `ghcr-cred`, the Telegram bot token and the SMTP password now live in git — encrypted — instead of being applied by hand on every machine. |
+| **C4.5** | **The registry actually used** | Part 2 ran Nexus in-cluster because the brief asked for one, but nothing pulled from it — images came straight from GHCR. Rather than exposing Nexus to the internet (which would make a laptop part of the CI path), it was turned around into a **pull-through proxy** for `ghcr.io`: the cluster asks Nexus, Nexus fetches once from GHCR with its own PAT, caches the layers and serves every later pull locally. The GitHub credentials now live **inside the registry**, so the cluster no longer needs any. |
+| **C4.6** | **Docker Hub cache** | A second proxy repository for `registry-1.docker.io`, both fronted by a Nexus **group** on one port, so a single address covers both upstreams. This matters more than the GHCR proxy: Docker Hub rate-limits anonymous pulls (~100 per 6 h per IP), and one CI or one office behind a single egress IP hits `429 Too Many Requests` at the worst possible moment. Every image in the dev environment now comes through the cache. |
 
 ## 🚧 Planned / not done yet
 
 | | Topic | Why |
 |---|---|---|
-| **C5** | Runtime hardening | `NetworkPolicy` (today any pod can reach MySQL), `securityContext` (`runAsNonRoot`, read-only rootfs), `PodDisruptionBudget`, TLS on the Ingress via cert-manager. |
+| **C5** | Runtime hardening | `securityContext` (containers still run as root with a writable filesystem and full capabilities) · `LimitRange`/`ResourceQuota` and the QoS classes that decide who gets OOM-killed first · `PodDisruptionBudget` (a `kubectl drain` currently evicts every replica at once) · `NetworkPolicy` — the big one: by default **any pod can reach any other pod, across namespaces**, so dev's phpMyAdmin can reach the production database. A namespace is a folder, not a wall. Requires a CNI that enforces policies (`--cni=calico`), which means recreating the cluster — so it pairs naturally with C6. |
 | **C6** | Ansible bootstrap | The cluster itself is still built by hand from a runbook. Ansible would own Day 0 (docker → minikube → addons → ArgoCD → one root manifest) and then get out of the way — ArgoCD takes over from there. |
 | **C7** | Progressive delivery | Argo Rollouts: canary releases with automatic analysis against Prometheus metrics and automatic rollback. This is where CI, CD and observability finally close into a loop. |
 | — | **app-of-apps** | The ArgoCD `Application` objects themselves are still applied by hand (`kubectl apply -f k8s/argocd/...`). A single root Application watching that directory would reduce the bootstrap to exactly one manual step. |
-| — | MySQL under GitOps | MySQL is still installed with `helm install` because its values held plaintext passwords. Sealed Secrets removes that obstacle (`auth.existingSecret`), so it can now move into git. |
+| — | MySQL under GitOps | MySQL is still installed with `helm install` because its values held plaintext passwords. Sealed Secrets removes that obstacle (`auth.existingSecret`), so it can now move into git. It is also the one workload still pulling its image straight from Docker Hub, for the same reason: its image is pinned in a values file that lives outside git, where Kustomize cannot reach it. |
 | — | Sealed secrets for prod | A `SealedSecret` is sealed for one specific namespace, so the `hotel` namespace needs its own sealed copies. |
 
 ---
